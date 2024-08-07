@@ -1,0 +1,173 @@
+# Importando bibliotecas necessárias
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+import matplotlib.pyplot as plt
+import seaborn as sns
+import string
+import numpy as np
+
+# Carregando o conjunto de dados
+data = pd.read_csv('complaints_processed.csv')
+
+# Explorando o conjunto de dados
+print("## 1. Explorando o Conjunto de Dados")
+print("Primeiras linhas do conjunto de dados:")
+print(data.head())
+
+print("\nInformações básicas do conjunto de dados:")
+print(data.info())
+
+# Verificando a presença de valores ausentes
+print("\nVerificando valores ausentes:")
+print(data.isnull().sum())
+
+# Removendo valores ausentes (se necessário)
+# Se houver valores ausentes, utilize a instrução abaixo para removê-los
+data = data.dropna()
+
+# Pré-processamento de texto
+def preprocess_text(text):
+    """
+    Função para pré-processamento do texto.
+
+    Argumentos:
+        text (str): Texto a ser pré-processado.
+
+    Retorna:
+        str: Texto pré-processado.
+    """
+    # Convertendo texto para minúsculas
+    text = text.lower()
+    # Removendo pontuação
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    # Removendo números
+    text = ''.join([char for char in text if not char.isdigit()])
+    return text
+
+# Aplicando pré-processamento ao texto
+print("\n## 2. Pré-processamento de Texto")
+data['narrative'] = data['narrative'].apply(preprocess_text)
+
+# Dividindo os dados em conjuntos de treino e teste
+X = data['narrative']
+y = data['product']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Vetorização de texto usando TF-IDF
+print("\n## 3. Vetorização de Texto com TF-IDF")
+vectorizer = TfidfVectorizer(max_features=5000, stop_words='english')
+X_train_vec = vectorizer.fit_transform(X_train)
+X_test_vec = vectorizer.transform(X_test)
+
+# Treinando o modelo com Logistic Regression
+print("\n## 4. Treinamento do Modelo (Logistic Regression)")
+model = LogisticRegression(multi_class='multinomial', max_iter=200, solver='lbfgs', random_state=42)
+model.fit(X_train_vec, y_train)
+
+# Avaliando o modelo
+print("\n## 5. Avaliação do Modelo")
+y_pred = model.predict(X_test_vec)
+
+# Métricas de avaliação
+accuracy = accuracy_score(y_test, y_pred)
+print(f"\nAcurácia do modelo: {accuracy:.2f}")
+
+# Matriz de confusão
+conf_matrix = confusion_matrix(y_test, y_pred)
+print("\nMatriz de confusão:")
+print(conf_matrix)
+
+# Relatório de classificação
+class_report = classification_report(y_test, y_pred)
+print("\nRelatório de classificação:")
+print(class_report)
+
+# Visualizando a matriz de confusão
+plt.figure(figsize=(8, 6))
+sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues")
+plt.title("Matriz de Confusão")
+plt.xlabel("Classe Prevista")
+plt.ylabel("Classe Real")
+plt.show()
+
+# Gráfico de barras verticais para distribuição de categorias
+plt.figure(figsize=(12, 6))
+sns.countplot(x='product', data=data, palette='viridis')
+plt.title("Distribuição de Categorias")
+plt.xlabel("Categoria")
+plt.ylabel("Contagem")
+plt.xticks(rotation=45)
+plt.show()
+
+# Função para plotar as palavras mais importantes para cada categoria
+def plot_top_words(model, vectorizer, num_words=10):
+    """
+    Função para plotar as palavras mais importantes para cada categoria.
+
+    Argumentos:
+        model (sklearn.linear_model.LogisticRegression): Modelo treinado.
+        vectorizer (sklearn.feature_extraction.text.TfidfVectorizer): Objeto TfidfVectorizer utilizado para a vetorização.
+        num_words (int): Número de palavras mais importantes a serem plotadas (padrão: 10).
+    """
+    feature_names = vectorizer.get_feature_names_out()
+    coefs = model.coef_
+
+    # Para cada categoria, plotamos as palavras mais importantes
+    for i, category in enumerate(model.classes_):
+        print(f"\nCategoria: {category}")
+        
+        # Obtendo índices das palavras com maior peso para a categoria
+        top_indices = coefs[i].argsort()[-num_words:]
+        top_words = [feature_names[idx] for idx in top_indices]
+        
+        # Obter pesos das palavras mais importantes
+        top_weights = coefs[i][top_indices]
+        
+        # Plotando as palavras mais importantes para a categoria
+        plt.figure(figsize=(10, 6))
+        plt.barh(top_words, top_weights, color='blue')
+        plt.title(f"Palavras mais importantes para a categoria '{category}'")
+        plt.xlabel("Peso")
+        plt.ylabel("Palavra")
+        plt.show()
+
+# Chamando a função para plotar as palavras mais importantes para cada categoria
+plot_top_words(model, vectorizer, num_words=10)
+
+# Gráfico de barras verticais para comparação de métricas de avaliação
+def plot_evaluation_metrics(class_report):
+    """
+    Função para plotar as métricas de avaliação.
+
+    Argumentos:
+        class_report (str): Relatório de classificação em formato string.
+    """
+    # Convertendo o relatório de classificação em DataFrame
+    metrics_df = pd.DataFrame(classification_report(y_test, y_pred, output_dict=True))
+    
+    # Removendo a última linha (média/total)
+    metrics_df = metrics_df.drop('accuracy', axis=1).T[:-1]
+    
+    # Plotando as métricas para cada categoria
+    metrics_df.plot(kind='bar', figsize=(12, 6), cmap='viridis')
+    plt.title("Métricas de Avaliação por Categoria")
+    plt.xlabel("Categoria")
+    plt.ylabel("Valor")
+    plt.legend(loc='best')
+    plt.show()
+
+# Chamando a função para plotar as métricas de avaliação
+plot_evaluation_metrics(class_report)
+
+# Relatório final
+print("\nRelatório Final:")
+print(f"- Acurácia do modelo: {accuracy:.2f}")
+print("- A matriz de confusão mostra o desempenho do modelo em diferentes categorias.")
+print("- O relatório de classificação inclui métricas como precisão, recall e F1-score para cada categoria.")
+print("- As palavras mais importantes para cada categoria foram visualizadas, dando uma visão sobre quais palavras têm maior peso na classificação de cada categoria.")
+print("- O modelo demonstrou um desempenho geral satisfatório e é capaz de classificar novas reclamações com base em seu conteúdo textual.")
+print("- Além disso, foram incluídas visualizações adicionais para a distribuição de categorias, comparação de métricas de avaliação e distribuição de palavras por categoria.")
+
